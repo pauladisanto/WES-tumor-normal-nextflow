@@ -1,0 +1,14 @@
+name: wes-nextflow-pipeline
+
+channels:
+  - conda-forge
+  - bioconda
+
+dependencies:
+  - bwa=0.7.17
+  - fastqc=0.12.1
+  - fastp
+  - samtools
+  - bcftools
+  - picard
+  - gatk4
