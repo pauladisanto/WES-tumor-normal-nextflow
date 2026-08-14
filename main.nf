@@ -17,15 +17,15 @@ params.panel_of_normals = "${projectDir}/reference/somatic/1000g_pon.hg38.vcf.gz
 params.panel_of_normals_index = "${params.panel_of_normals}.tbi"
 
 process FASTQC_RAW {
-  tag "${sample_id} (raw)"; cpus 2; memory '2 GB'; time '2h'
+  tag "${pair_id}: ${sample_id} (raw)"; cpus 2; memory '2 GB'; time '2h'
   publishDir "${params.outdir}/fastqc_raw", mode: 'copy'
-  input: tuple val(sample_id), val(role), path(reads)
+  input: tuple val(pair_id), val(sample_id), val(role), path(reads)
   output: path '*_fastqc.html'; path '*_fastqc.zip'
   script: "wes_fastqc.sh ${task.cpus} ${reads}"
 }
 
 process FASTP {
-    tag "${sample_id}"
+    tag "${pair_id}: ${sample_id}"
 
     cpus 4
     memory '4 GB'
@@ -40,10 +40,11 @@ process FASTP {
         pattern: '*.fastp.{html,json}'
 
     input:
-    tuple val(sample_id), val(role), path(reads)
+    tuple val(pair_id), val(sample_id), val(role), path(reads)
 
     output:
-    tuple val(sample_id),
+    tuple val(pair_id),
+          val(sample_id),
           val(role),
           path("${sample_id}_1.trimmed.fastq.gz"),
           path("${sample_id}_2.trimmed.fastq.gz"),
@@ -66,9 +67,9 @@ process FASTP {
 }
 
 process FASTQC_TRIMMED {
-  tag "${sample_id} (trimmed)"; cpus 2; memory '2 GB'; time '2h'
+  tag "${pair_id}: ${sample_id} (trimmed)"; cpus 2; memory '2 GB'; time '2h'
   publishDir "${params.outdir}/fastqc_trimmed", mode: 'copy'
-  input: tuple val(sample_id), val(role), path(reads)
+  input: tuple val(pair_id), val(sample_id), val(role), path(reads)
   output: path '*_fastqc.html'; path '*_fastqc.zip'
   script: "wes_fastqc.sh ${task.cpus} ${reads}"
 }
@@ -125,72 +126,73 @@ process BWA_INDEX {
 }
 
 process ALIGN_BWA {
-  tag "$sample_id"; cpus 8; memory '10 GB'; time '8h'; maxForks 2
+  tag "${pair_id}: ${sample_id}"; cpus 8; memory '10 GB'; time '8h'; maxForks 2
   publishDir "${params.outdir}/aligned", mode: 'copy', pattern: '*.bam*'
   input:
-  tuple val(sample_id), val(role), path(r1), path(r2)
+  tuple val(pair_id), val(sample_id), val(role), path(r1), path(r2)
   tuple path(reference), path(amb), path(ann), path(bwt), path(pac), path(sa)
-  output: tuple val(sample_id), val(role), path("${sample_id}.sorted.bam"), path("${sample_id}.sorted.bam.bai"), emit: bam
+  output: tuple val(pair_id), val(sample_id), val(role), path("${sample_id}.sorted.bam"), path("${sample_id}.sorted.bam.bai"), emit: bam
   script: "wes_align_bwa.sh ${sample_id} ${task.cpus} ${reference} ${r1} ${r2}"
 }
 
 process SAMTOOLS_QC_PREDUP {
-  tag "${sample_id} (predup)"; cpus 4; memory '2 GB'; time '2h'
+  tag "${pair_id}: ${sample_id} (predup)"; cpus 4; memory '2 GB'; time '2h'
   publishDir "${params.outdir}/samtools_qc_predup", mode: 'copy'
-  input: tuple val(sample_id), val(role), path(bam), path(bai)
+  input: tuple val(pair_id), val(sample_id), val(role), path(bam), path(bai)
   output: path "${sample_id}.predup.flagstat.txt"; path "${sample_id}.predup.idxstats.txt"; path "${sample_id}.predup.stats.txt"
   script: "wes_samtools_qc.sh ${sample_id} predup ${task.cpus} ${bam}"
 }
 
 process MARK_DUPLICATES {
-  tag "$sample_id"; cpus 4; memory '10 GB'; time '6h'; maxForks 2
+  tag "${pair_id}: ${sample_id}"; cpus 4; memory '10 GB'; time '6h'; maxForks 2
   publishDir "${params.outdir}/markduplicates", mode: 'copy', pattern: '*.bam*'
   publishDir "${params.outdir}/markduplicates_metrics", mode: 'copy', pattern: '*.txt'
-  input: tuple val(sample_id), val(role), path(bam), path(bai)
+  input: tuple val(pair_id), val(sample_id), val(role), path(bam), path(bai)
   output:
-  tuple val(sample_id), val(role), path("${sample_id}.markdup.bam"), path("${sample_id}.markdup.bam.bai"), emit: bam
+  tuple val(pair_id), val(sample_id), val(role), path("${sample_id}.markdup.bam"), path("${sample_id}.markdup.bam.bai"), emit: bam
   path "${sample_id}.markduplicates_metrics.txt", emit: metrics
   script: "wes_mark_duplicates.sh ${sample_id} ${task.cpus} ${bam}"
 }
 
 process SAMTOOLS_QC_POSTDUP {
-  tag "${sample_id} (postdup)"; cpus 4; memory '2 GB'; time '2h'
+  tag "${pair_id}: ${sample_id} (postdup)"; cpus 4; memory '2 GB'; time '2h'
   publishDir "${params.outdir}/samtools_qc_postdup", mode: 'copy'
-  input: tuple val(sample_id), val(role), path(bam), path(bai)
+  input: tuple val(pair_id), val(sample_id), val(role), path(bam), path(bai)
   output: path "${sample_id}.postdup.flagstat.txt"; path "${sample_id}.postdup.idxstats.txt"; path "${sample_id}.postdup.stats.txt"
   script: "wes_samtools_qc.sh ${sample_id} postdup ${task.cpus} ${bam}"
 }
 
 process BASE_RECALIBRATOR {
-  tag "$sample_id"; cpus 2; memory '8 GB'; time '6h'; maxForks 2
+  tag "${pair_id}: ${sample_id}"; cpus 2; memory '8 GB'; time '6h'; maxForks 2
   publishDir "${params.outdir}/bqsr_tables", mode: 'copy', pattern: '*.recal.table'
   input:
-  tuple val(sample_id), val(role), path(bam), path(bai)
+  tuple val(pair_id), val(sample_id), val(role), path(bam), path(bai)
   tuple path(reference), path(fai), path(dict)
   tuple path(dbsnp), path(dbsnp_idx), path(indels), path(indels_idx), path(mills), path(mills_idx)
-  output: tuple val(sample_id), val(role), path(bam), path(bai), path("${sample_id}.recal.table"), emit: recalibration
+  output: tuple val(pair_id), val(sample_id), val(role), path(bam), path(bai), path("${sample_id}.recal.table"), emit: recalibration
   script: "wes_base_recalibrator.sh ${sample_id} ${bam} ${reference} ${dbsnp} ${indels} ${mills}"
 }
 
 process APPLY_BQSR {
-  tag "$sample_id"; cpus 2; memory '8 GB'; time '6h'; maxForks 2
+  tag "${pair_id}: ${sample_id}"; cpus 2; memory '8 GB'; time '6h'; maxForks 2
   publishDir "${params.outdir}/bqsr_bam", mode: 'copy', pattern: '*.bam*'
   input:
-  tuple val(sample_id), val(role), path(bam), path(bai), path(recal_table)
+  tuple val(pair_id), val(sample_id), val(role), path(bam), path(bai), path(recal_table)
   tuple path(reference), path(fai), path(dict)
-  output: tuple val(sample_id), val(role), path("${sample_id}.recal.bam"), path("${sample_id}.recal.bam.bai"), emit: bam
+  output: tuple val(pair_id), val(sample_id), val(role), path("${sample_id}.recal.bam"), path("${sample_id}.recal.bam.bai"), emit: bam
   script: "wes_apply_bqsr.sh ${sample_id} ${task.cpus} ${bam} ${recal_table} ${reference}"
 }
 
 process MUTECT2 {
-  tag "${tumor_id}_vs_${normal_id}"; cpus 4; memory '24 GB'; time '12h'; maxForks 1
-  publishDir "${params.outdir}/mutect2", mode: 'copy'
+  tag "${pair_id}: ${tumor_id}_vs_${normal_id}"; cpus 4; memory '24 GB'; time '12h'; maxForks 1
+  publishDir "${params.outdir}/mutect2/${pair_id}", mode: 'copy'
   input:
-  tuple val(tumor_id), path(tumor_bam), path(tumor_bai), val(normal_id), path(normal_bam), path(normal_bai)
+  tuple val(pair_id), val(tumor_id), path(tumor_bam), path(tumor_bai), val(normal_id), path(normal_bam), path(normal_bai)
   tuple path(reference), path(fai), path(dict)
   tuple path(germline), path(germline_idx), path(pon), path(pon_idx)
   output:
-  tuple val(tumor_id),
+  tuple val(pair_id),
+        val(tumor_id),
         val(normal_id),
         path("${tumor_id}_vs_${normal_id}.unfiltered.vcf.gz"),
         path("${tumor_id}_vs_${normal_id}.unfiltered.vcf.gz.tbi"),
@@ -206,18 +208,19 @@ process MUTECT2 {
 }
 
 process VCF_TO_TSV {
-    tag "${tumor_id}_vs_${normal_id}"
+    tag "${pair_id}: ${tumor_id}_vs_${normal_id}"
 
     cpus 1
     memory '2 GB'
     time '1h'
 
-    publishDir "${params.outdir}/mutect2",
+    publishDir "${params.outdir}/mutect2/${pair_id}",
         mode: 'copy',
         pattern: '*.unfiltered.tsv'
 
     input:
-    tuple val(tumor_id),
+    tuple val(pair_id),
+          val(tumor_id),
           val(normal_id),
           path(vcf),
           path(vcf_index)
@@ -236,15 +239,15 @@ process VCF_TO_TSV {
 
 workflow {
   samples_ch = Channel.fromPath(params.input, checkIfExists: true).splitCsv(header: true).map { row ->
-    assert row.sample && row.role && row.fastq_1 && row.fastq_2 : 'Required columns: sample,role,fastq_1,fastq_2'
+    assert row.pair_id && row.sample && row.role && row.fastq_1 && row.fastq_2 : 'Required columns: pair_id,sample,role,fastq_1,fastq_2'
     def role = row.role.trim().toLowerCase()
     assert role in ['tumor','normal'] : "Invalid role for ${row.sample}"
-    tuple(row.sample.trim(), role, file(row.fastq_1.trim(), checkIfExists: true), file(row.fastq_2.trim(), checkIfExists: true))
+    tuple(row.pair_id.trim(), row.sample.trim(), role, file(row.fastq_1.trim(), checkIfExists: true), file(row.fastq_2.trim(), checkIfExists: true))
   }
-  raw_reads_ch = samples_ch.map { id, role, r1, r2 -> tuple(id, role, [r1,r2]) }
+  raw_reads_ch = samples_ch.map { pair_id, id, role, r1, r2 -> tuple(pair_id, id, role, [r1,r2]) }
   FASTQC_RAW(raw_reads_ch)
   FASTP(raw_reads_ch)
-  trimmed_qc_ch = FASTP.out.reads.map { id, role, r1, r2 -> tuple(id, role, [r1,r2]) }
+  trimmed_qc_ch = FASTP.out.reads.map { pair_id, id, role, r1, r2 -> tuple(pair_id, id, role, [r1,r2]) }
   FASTQC_TRIMMED(trimmed_qc_ch)
 
   gatk_ref_ch = Channel.value(tuple(file(params.reference, checkIfExists: true), file(params.reference_fai, checkIfExists: true), file(params.reference_dict, checkIfExists: true)))
@@ -294,8 +297,16 @@ workflow {
   BASE_RECALIBRATOR(MARK_DUPLICATES.out.bam, gatk_ref_ch, bqsr_ch)
   APPLY_BQSR(BASE_RECALIBRATOR.out.recalibration, gatk_ref_ch)
 
-  tumor_ch = APPLY_BQSR.out.bam.filter { id, role, bam, bai -> role == 'tumor' }.map { id, role, bam, bai -> tuple(id,bam,bai) }
-  normal_ch = APPLY_BQSR.out.bam.filter { id, role, bam, bai -> role == 'normal' }.map { id, role, bam, bai -> tuple(id,bam,bai) }
-  MUTECT2(tumor_ch.combine(normal_ch), gatk_ref_ch, somatic_ch)
+  tumor_ch = APPLY_BQSR.out.bam
+    .filter { pair_id, id, role, bam, bai -> role == 'tumor' }
+    .map { pair_id, id, role, bam, bai -> tuple(pair_id, id, bam, bai) }
+
+  normal_ch = APPLY_BQSR.out.bam
+    .filter { pair_id, id, role, bam, bai -> role == 'normal' }
+    .map { pair_id, id, role, bam, bai -> tuple(pair_id, id, bam, bai) }
+
+  matched_pairs_ch = tumor_ch.join(normal_ch, by: 0)
+
+  MUTECT2(matched_pairs_ch, gatk_ref_ch, somatic_ch)
   VCF_TO_TSV(MUTECT2.out.variants)
 }
