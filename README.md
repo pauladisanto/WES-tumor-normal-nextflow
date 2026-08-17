@@ -1,35 +1,36 @@
-# WES tumor-normal Nextflow
+# WES Tumor-Normal Nextflow
 
-Workflow Nextflow DSL2 reproducible para analizar múltiples parejas tumor-normal de exoma completo (WES). Cada paciente se identifica mediante `pair_id`; el workflow exige exactamente una muestra `tumor` y una muestra `normal` por pareja y nunca combina muestras de pacientes diferentes.
+A reproducible Nextflow DSL2 workflow for analyzing multiple whole-exome sequencing (WES) tumor-normal pairs. Each patient is identified by a `pair_id`. The workflow requires exactly one `tumor` sample and one `normal` sample per pair and prevents samples from different patients from being combined.
 
-## Alcance
+## Scope
 
-Flujo principal:
+Main workflow:
 
-1. FastQC de lecturas originales.
-2. Recorte y control de calidad con fastp.
-3. FastQC de lecturas recortadas.
-4. Alineamiento contra GRCh38 con BWA-MEM y ordenación con samtools.
-5. Marcado, no eliminación, de duplicados.
-6. BQSR con GATK.
-7. Cobertura sobre las regiones capturadas con mosdepth.
-8. Mutect2 tumor-normal restringido al diseño de captura.
-9. Modelo de artefactos de orientación F1R2.
-10. Estimación de contaminación con la muestra normal emparejada.
-11. FilterMutectCalls.
-12. Conversión del VCF filtrado a TSV y resumen de QC con MultiQC.
+1. FastQC on raw reads.
+2. Read trimming and quality control with fastp.
+3. FastQC on trimmed reads.
+4. Alignment to GRCh38 with BWA-MEM and sorting with samtools.
+5. Duplicate marking without duplicate removal.
+6. Base quality score recalibration (BQSR) with GATK.
+7. Coverage analysis over captured regions with mosdepth.
+8. Tumor-normal variant calling with Mutect2, restricted to the capture design.
+9. F1R2 read-orientation artifact modeling.
+10. Contamination estimation using the matched normal sample.
+11. Variant filtering with FilterMutectCalls.
+12. Conversion of the filtered VCF to TSV and generation of a MultiQC report.
 
-Ramas opcionales: CNVkit, VEP y HaplotypeCaller sobre la muestra normal.
+Optional branches include CNVkit, VEP, and HaplotypeCaller on the normal sample.
 
-> Este pipeline es apropiado para investigación. No constituye por sí solo un procedimiento clínico validado. Los resultados dependen del diseño de captura, calidad, profundidad, pureza tumoral, ploidía y compatibilidad exacta de todos los recursos con GRCh38.
+> This pipeline is intended for research use. It is not, by itself, a clinically validated procedure. Results depend on the capture design, sample quality, sequencing depth, tumor purity, ploidy, and exact compatibility of all resources with GRCh38.
 
-## Estructura del proyecto
+## Project structure
 
 ```text
 WES-tumor-normal-nextflow/
 ├── main.nf
 ├── nextflow.config
 ├── samplesheet.csv
+├── modules/
 ├── bin/
 ├── envs/
 ├── data/
@@ -37,131 +38,144 @@ WES-tumor-normal-nextflow/
     ├── Homo_sapiens_assembly38.fasta
     ├── Homo_sapiens_assembly38.fasta.fai
     ├── Homo_sapiens_assembly38.dict
-    ├── intervals/exome_targets.hg38.bed
+    ├── intervals/
+    │   └── agilent_v6_utr/
+    │       └── S07604624_hg38/
+    │           ├── S07604624_Regions.bed
+    │           └── S07604624_Covered.bed
     ├── known_sites/
     └── somatic/
 ```
 
-Los FASTQ, referencias, índices, `work/` y `results/` no deben subirse a GitHub.
+FASTQ files, reference resources, indexes, `work/`, and `results/` should not be committed to GitHub.
 
-## Samplesheet para múltiples pacientes
+## Samplesheet for multiple patients
 
 ```csv
 pair_id,sample,role,fastq_1,fastq_2
-P1,SRR7890883,tumor,/ruta/SRR7890883_1.fastq.gz,/ruta/SRR7890883_2.fastq.gz
-P1,SRR7890874,normal,/ruta/SRR7890874_1.fastq.gz,/ruta/SRR7890874_2.fastq.gz
-P2,TUMOR_02,tumor,/ruta/TUMOR_02_R1.fastq.gz,/ruta/TUMOR_02_R2.fastq.gz
-P2,NORMAL_02,normal,/ruta/NORMAL_02_R1.fastq.gz,/ruta/NORMAL_02_R2.fastq.gz
+P1,SRR7890883,tumor,/path/to/SRR7890883_1.fastq.gz,/path/to/SRR7890883_2.fastq.gz
+P1,SRR7890874,normal,/path/to/SRR7890874_1.fastq.gz,/path/to/SRR7890874_2.fastq.gz
+P2,TUMOR_02,tumor,/path/to/TUMOR_02_R1.fastq.gz,/path/to/TUMOR_02_R2.fastq.gz
+P2,NORMAL_02,normal,/path/to/NORMAL_02_R1.fastq.gz,/path/to/NORMAL_02_R2.fastq.gz
 ```
 
-Reglas:
+Rules:
 
-- `pair_id` vincula tumor y normal del mismo paciente.
-- Cada `pair_id` debe aparecer exactamente dos veces: una como `tumor` y otra como `normal`.
-- `sample` debe ser único en toda la cohorte y coincidir con el nombre de muestra usado en el read group del BAM.
-- Use identificadores simples, sin espacios ni caracteres de shell.
-- Las rutas pueden ser absolutas o relativas al directorio desde el que se ejecuta Nextflow.
+- `pair_id` links the tumor and normal samples from the same patient.
+- Each `pair_id` must appear exactly twice: once as `tumor` and once as `normal`.
+- `sample` must be unique across the cohort and must match the sample name used in the BAM read group.
+- Use simple identifiers without spaces or shell-sensitive characters.
+- Paths may be absolute or relative to the directory from which Nextflow is launched.
 
-## Recursos obligatorios
+## Required resources
 
-Todos los recursos deben usar la misma referencia y nomenclatura de contigs (aquí, GRCh38). No mezcle `chr1` con `1`, ni recursos hg19 con GRCh38.
+All resources must use the same reference assembly and contig naming convention. Do not mix `chr1` with `1`, or hg19 resources with GRCh38.
 
-| Parámetro | Recurso |
+| Parameter | Resource |
 |---|---|
-| `--reference` | FASTA GRCh38 |
-| `--reference_fai` | índice samtools `.fai` |
-| `--reference_dict` | diccionario GATK/Picard `.dict` |
-| `--targets` | BED del kit de captura de exoma realmente usado |
-| `--dbsnp` | dbSNP para BQSR y su `.idx` |
-| `--known_indels` | indels conocidos y `.tbi` |
-| `--mills_indels` | Mills indels y `.tbi` |
-| `--germline_resource` | recurso af-only gnomAD y `.tbi` para Mutect2 |
-| `--panel_of_normals` | panel de normales y `.tbi` |
-| `--contamination_sites` | VCF pequeño de SNP comunes y `.tbi` para GetPileupSummaries |
+| `--reference` | GRCh38 FASTA |
+| `--reference_fai` | samtools `.fai` index |
+| `--reference_dict` | GATK/Picard `.dict` sequence dictionary |
+| `--calling_targets` | GRCh38 BED containing the biological target regions used for variant calling |
+| `--coverage_targets` | GRCh38 BED containing regions covered by the capture probes |
+| `--targets` | Compatibility alias for older `main.nf` versions that still use a single target BED |
+| `--dbsnp` | dbSNP resource for BQSR, with its `.idx` index |
+| `--known_indels` | Known indels resource, with its `.tbi` index |
+| `--mills_indels` | Mills indels resource, with its `.tbi` index |
+| `--germline_resource` | af-only gnomAD resource for Mutect2, with its `.tbi` index |
+| `--panel_of_normals` | Panel of normals, with its `.tbi` index |
+| `--contamination_sites` | Common-SNP VCF for GetPileupSummaries, with its `.tbi` index |
 
-El archivo `reference/intervals/exome_targets.hg38.bed` **no puede reemplazarse por un BED genérico**: debe corresponder al kit de captura y a GRCh38. Si se desconoce el kit, confírmelo en los metadatos del estudio o del centro de secuenciación antes de interpretar cobertura, variantes o CNV.
+The target BED files cannot be replaced with arbitrary generic exome intervals. They must correspond to the capture kit that was actually used and to GRCh38. For the Agilent SureSelect Human All Exon V6+UTR design used here:
 
-Los archivos `.fai`, `.dict`, `.idx` y `.tbi` son índices; no son copias de la referencia. Deben corresponder exactamente al archivo principal que acompañan.
+- `S07604624_Regions.bed` contains the target regions of interest and is used for variant calling.
+- `S07604624_Covered.bed` contains regions covered by the capture probes and is used for coverage analysis and CNVkit.
 
-### Índice BWA
+If the capture kit is unknown, confirm it using the study metadata or information from the sequencing center before interpreting coverage, variants, or copy-number changes.
 
-Se utiliza BWA clásico, no BWA-MEM2, para reducir el pico de memoria durante la indexación de GRCh38. Si existen los cinco archivos `.amb`, `.ann`, `.bwt`, `.pac` y `.sa`, el proceso `BWA_INDEX` se omite incluso sin `-resume`. Si falta cualquiera, se reconstruye el conjunto completo.
+The `.fai`, `.dict`, `.idx`, and `.tbi` files are indexes, not copies of their corresponding resources. Each index must match its associated primary file exactly.
 
-## Entornos reproducibles
+### BWA index
 
-El archivo `nextflow.config` asigna un entorno Conda pequeño a cada familia de herramientas. Esto evita el conflicto de dependencias que puede aparecer al forzar BWA, GATK, bcftools, CNVkit y VEP dentro de un único YAML exportado.
+The workflow uses classic BWA rather than BWA-MEM2 to reduce peak memory usage while indexing GRCh38. If all five index files (`.amb`, `.ann`, `.bwt`, `.pac`, and `.sa`) are present, `BWA_INDEX` is skipped even without `-resume`. If any index file is missing, the complete index set is rebuilt.
 
-Instale Nextflow y Conda/Mamba, dé permisos a los scripts y ejecute:
+## Reproducible environments
+
+The `nextflow.config` file assigns a small Conda environment to each tool family. This avoids dependency conflicts that can occur when BWA, GATK, bcftools, CNVkit, and VEP are forced into a single exported YAML environment.
+
+Install Nextflow and Conda or Mamba, make the scripts executable, and launch the workflow:
 
 ```bash
-cd /home/paula-di-santo/Documents/GitHub_projects/WES-tumor-normal-nextflow
+cd /path/to/WES-tumor-normal-nextflow
 chmod +x bin/*.sh
 nextflow run main.nf -profile conda -resume
 ```
 
-Para usar rutas distintas:
+To use custom paths:
 
 ```bash
 nextflow run main.nf -profile conda -resume \
-  --input /ruta/samplesheet.csv \
-  --reference /ruta/Homo_sapiens_assembly38.fasta \
-  --reference_fai /ruta/Homo_sapiens_assembly38.fasta.fai \
-  --reference_dict /ruta/Homo_sapiens_assembly38.dict \
-  --targets /ruta/targets_del_kit.hg38.bed \
-  --outdir /ruta/results
+  --input /path/to/samplesheet.csv \
+  --reference /path/to/Homo_sapiens_assembly38.fasta \
+  --reference_fai /path/to/Homo_sapiens_assembly38.fasta.fai \
+  --reference_dict /path/to/Homo_sapiens_assembly38.dict \
+  --calling_targets /path/to/capture_kit_regions.hg38.bed \
+  --coverage_targets /path/to/capture_kit_covered.hg38.bed \
+  --targets /path/to/capture_kit_regions.hg38.bed \
+  --outdir /path/to/results
 ```
 
-`-resume` reutiliza tareas válidas del directorio `work/`. Es recomendable para continuar una corrida interrumpida, pero no reemplaza un respaldo de los resultados.
+`-resume` reuses valid tasks from the `work/` directory. It is recommended when continuing an interrupted run, but it is not a substitute for backing up final results.
 
-## Ramas opcionales
+## Optional branches
 
-### CNV somáticas
+### Somatic copy-number variants
 
 ```bash
 nextflow run main.nf -profile conda -resume --run_cnv true
 ```
 
-CNVkit usa el tumor y su normal emparejado. En WES, la resolución y exactitud de CNV son limitadas y dependen fuertemente de cobertura, pureza, ploidía y diseño de captura.
+CNVkit uses each tumor and its matched normal sample. Copy-number resolution and accuracy in WES data are limited and depend strongly on coverage, tumor purity, ploidy, and capture design.
 
-### Variantes germinales de las muestras normales
+### Germline variants in normal samples
 
 ```bash
 nextflow run main.nf -profile conda -resume --run_germline true
 ```
 
-Esta rama produce un gVCF por normal mediante HaplotypeCaller. Los gVCF no son todavía una llamada conjunta de cohorte; para ello se requiere GenomicsDBImport/GenotypeGVCFs y filtrado germinal posterior.
+This branch produces one gVCF per normal sample with HaplotypeCaller. These gVCFs do not constitute joint cohort genotyping. Joint genotyping requires subsequent GenomicsDBImport, GenotypeGVCFs, and germline filtering steps.
 
-### Anotación con VEP
+### VEP annotation
 
 ```bash
 nextflow run main.nf -profile conda -resume \
   --run_vep true \
-  --vep_cache /ruta/al/cache/VEP
+  --vep_cache /path/to/vep/cache
 ```
 
-La caché debe estar instalada localmente para *Homo sapiens*, GRCh38, y ser compatible con la versión de VEP fijada en `envs/vep.yml`.
+The cache must be installed locally for *Homo sapiens*, GRCh38, and must be compatible with the VEP version specified in `envs/vep.yml`.
 
-## Resultados principales
+## Main outputs
 
-- `results/multiqc/multiqc_report.html`: resumen global de QC.
-- `results/pipeline_info/`: informe, cronología y tabla de trazabilidad de Nextflow.
-- `results/coverage/`: cobertura por muestra y regiones objetivo.
-- `results/contamination/`: pileups, contaminación y segmentación.
-- `results/mutect2/<pair_id>/*.unfiltered.vcf.gz`: llamadas sin filtrar.
-- `results/mutect2/<pair_id>/*.filtered.vcf.gz`: llamadas evaluadas por FilterMutectCalls.
-- `results/mutect2/<pair_id>/*.final.tsv`: tabla legible; conserva la columna `FILTER`.
-- `results/cnvkit/<pair_id>/`: resultados CNV opcionales.
-- `results/germline/<pair_id>/`: gVCF opcionales de las muestras normales.
+- `results/multiqc/multiqc_report.html`: global quality-control summary.
+- `results/pipeline_info/`: Nextflow execution report, timeline, and trace table.
+- `results/coverage/`: sample-level and target-region coverage results.
+- `results/contamination/`: pileup, contamination, and segmentation results.
+- `results/mutect2/<pair_id>/*.unfiltered.vcf.gz`: unfiltered somatic calls.
+- `results/mutect2/<pair_id>/*.filtered.vcf.gz`: calls evaluated by FilterMutectCalls.
+- `results/mutect2/<pair_id>/*.final.tsv`: readable variant table retaining the `FILTER` column.
+- `results/cnvkit/<pair_id>/`: optional CNVkit results.
+- `results/germline/<pair_id>/`: optional gVCFs from normal samples.
 
-Una variante presente en el VCF “filtered” no necesariamente tiene `PASS`; revise siempre la columna `FILTER`. Para informes biológicos también hacen falta anotación, controles de calidad, revisión visual y criterios definidos previamente.
+A variant present in a filtered VCF does not necessarily have a `PASS` status. Always inspect the `FILTER` column. Biological reporting also requires annotation, quality controls, visual inspection, and predefined interpretation criteria.
 
-## Consideraciones de recursos
+## Resource considerations
 
-El proceso Mutect2 solicita 24 GB de RAM y se limita a una pareja simultánea (`maxForks 1`), adecuado para una estación con unos 32 GB de RAM. Los procesos de muestras distintas se paralelizan cuando los recursos lo permiten. Ajuste `cpus`, `memory` y `maxForks` a su equipo o clúster.
+Mutect2 requests 24 GB of RAM and is limited to one pair at a time with `maxForks 1`, which is appropriate for a workstation with approximately 32 GB of RAM. Processes for different samples are parallelized when resources permit. Adjust `cpus`, `memory`, and `maxForks` for the available workstation or compute cluster.
 
-Para un análisis real use los FASTQ completos. Submuestras pequeñas sirven para comprobar que el pipeline funciona, pero no permiten inferencias fiables sobre sensibilidad, ausencia de variantes, cobertura ni CNV.
+Use complete FASTQ files for real analyses. Small subsamples are useful for testing whether the pipeline runs, but they cannot support reliable conclusions about sensitivity, absence of variants, coverage, or copy-number changes.
 
-## Documentación científica y técnica
+## Scientific and technical documentation
 
 - [GATK FilterMutectCalls](https://gatk.broadinstitute.org/hc/en-us/articles/9570331605531-FilterMutectCalls)
 - [GATK CalculateContamination](https://gatk.broadinstitute.org/hc/en-us/articles/4414586751771-CalculateContamination)
