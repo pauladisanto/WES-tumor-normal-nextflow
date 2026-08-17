@@ -1,0 +1,5 @@
+name: wes-gatk
+channels: [conda-forge, bioconda]
+dependencies:
+  - gatk4=4.6.1.0
+  - samtools=1.20

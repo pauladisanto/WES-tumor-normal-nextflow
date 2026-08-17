@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 sample=$1; threads=$2; reference=$3; r1=$4; r2=$5
 sort_threads=2
 bwa_threads=$((threads-sort_threads))

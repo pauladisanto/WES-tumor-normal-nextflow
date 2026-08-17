@@ -1,0 +1,7 @@
+name: wes-alignment
+channels: [conda-forge, bioconda]
+dependencies:
+  - bwa=0.7.17
+  - samtools=1.20
+  - picard=3.2.0
+  - mosdepth=0.3.8

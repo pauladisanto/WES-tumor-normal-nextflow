@@ -1,0 +1,5 @@
+name: wes-vep
+channels: [conda-forge, bioconda]
+dependencies:
+  - ensembl-vep=112.0
+  - htslib=1.20

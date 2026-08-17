@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 sample=$1; threads=$2; bam=$3
 mkdir -p tmp
 picard -Xmx8g MarkDuplicates INPUT="$bam" OUTPUT="${sample}.markdup.bam" \
