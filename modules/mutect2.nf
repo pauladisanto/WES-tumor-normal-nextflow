@@ -2,7 +2,7 @@ process MUTECT2 {
     label 'gatk'
     tag "${pair_id}: ${tumor_id}_vs_${normal_id}"
     cpus 4; memory '24 GB'; time '12h'; maxForks 1
-    publishDir "${params.outdir}/mutect2/${pair_id}", mode: 'copy', pattern: '*.unfiltered.*'
+    publishDir { "${params.outdir}/mutect2/${pair_id}" }, mode: 'copy', pattern: '*.unfiltered.*'
     input:
     tuple val(pair_id), val(tumor_id), path(tumor_bam), path(tumor_bai), val(normal_id), path(normal_bam), path(normal_bai)
     tuple path(reference), path(fai), path(dict)

@@ -2,7 +2,7 @@ process CALCULATE_CONTAMINATION {
     label 'gatk'
     tag "${pair_id}: ${tumor_id}_vs_${normal_id}"
     cpus 1; memory '4 GB'; time '2h'
-    publishDir "${params.outdir}/contamination/${pair_id}", mode: 'copy'
+    publishDir { "${params.outdir}/contamination/${pair_id}" }, mode: 'copy'
     input:
     tuple val(pair_id), val(tumor_id), path(tumor_pileups), val(normal_id), path(normal_pileups)
     output:
