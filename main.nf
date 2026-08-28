@@ -19,7 +19,15 @@ include { FILTER_MUTECT_CALLS } from './modules/filter_mutect_calls'
 include { VEP } from './modules/vep'
 include { VCF_TO_TSV } from './modules/vcf_to_tsv'
 include { CNVKIT } from './modules/cnvkit'
+include { CNVKIT_CALL } from './modules/cnvkit_call'
+include { CNV_TO_TSV } from './modules/cnv_to_tsv'
+include { ANNOTATE_CNV_GENES } from './modules/annotate_cnv_genes'
 include { HAPLOTYPE_CALLER } from './modules/haplotype_caller'
+include { GENOTYPE_GVCFS } from './modules/genotype_gvcfs'
+include { NORMALIZE_GERMLINE_VARIANTS } from './modules/normalize_germline_variants'
+include { FILTER_GERMLINE_VARIANTS } from './modules/filter_germline_variants'
+include { VEP_GERMLINE } from './modules/vep_germline'
+include { GERMLINE_VCF_TO_TSV } from './modules/germline_vcf_to_tsv'
 include { MULTIQC } from './modules/multiqc'
 
 
@@ -130,10 +138,34 @@ workflow {
 
     if (params.run_cnv) {
         CNVKIT(matched_bams_ch, gatk_ref_ch, targets_ch)
+        CNVKIT_CALL(CNVKIT.out.segments)
+        CNV_TO_TSV(CNVKIT_CALL.out.calls)
+
+        if (params.cnv_gene_annotation) {
+            ANNOTATE_CNV_GENES(
+                CNVKIT_CALL.out.calls,
+                Channel.value(file(params.cnv_gene_annotation, checkIfExists: true))
+            )
+        }
     }
     if (params.run_germline) {
         normal_for_germline_ch = normal_bam_ch.map { pair_id, normal_id, bam, bai -> tuple(pair_id, normal_id, bam, bai) }
         HAPLOTYPE_CALLER(normal_for_germline_ch, gatk_ref_ch, targets_ch)
+        GENOTYPE_GVCFS(HAPLOTYPE_CALLER.out.gvcf, gatk_ref_ch, targets_ch)
+        NORMALIZE_GERMLINE_VARIANTS(GENOTYPE_GVCFS.out.variants, Channel.value(reference_file))
+        FILTER_GERMLINE_VARIANTS(NORMALIZE_GERMLINE_VARIANTS.out.normalized, gatk_ref_ch)
+
+        if (params.run_vep) {
+            VEP_GERMLINE(
+                FILTER_GERMLINE_VARIANTS.out.filtered,
+                Channel.value(file(params.vep_cache, checkIfExists: true))
+            )
+            final_germline_variants_ch = VEP_GERMLINE.out.annotated
+        } else {
+            final_germline_variants_ch = FILTER_GERMLINE_VARIANTS.out.filtered
+        }
+
+        GERMLINE_VCF_TO_TSV(final_germline_variants_ch)
     }
 
     raw_fastqc_files_ch = FASTQC_RAW.out.reports.map { pair_id, sample_id, html, zip -> [html, zip] }

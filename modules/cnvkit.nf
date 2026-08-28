@@ -8,10 +8,11 @@ process CNVKIT {
     tuple path(reference), path(fai), path(dict)
     path targets
     output:
-    path '*.cnr'
-    path '*.cns'
-    path '*.cnn'
-    path '*.pdf'
+    tuple val(pair_id), val(tumor_id), val(normal_id), path("${tumor_id}.cnv.cnr"), emit: ratios
+    tuple val(pair_id), val(tumor_id), val(normal_id), path("${tumor_id}.cnv.segments.cns"), emit: segments
+    path '*.cnn', emit: references
+    path '*.pdf', emit: plots
+    path '*.png', emit: scatter
     script:
-    "wes_cnvkit.sh ${pair_id} ${tumor_bam} ${normal_bam} ${targets} ${reference}"
+    "wes_cnvkit.sh ${pair_id} ${tumor_id} ${tumor_bam} ${normal_bam} ${targets} ${reference}"
 }

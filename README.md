@@ -17,7 +17,7 @@ modeling, variant filtering, optional VEP annotation, and generation of a
 human-readable TSV table.
 
 > [!WARNING]
-> This workflow is intended for training. It is not a clinically
+> This workflow is intended for research and training. It is not a clinically
 > validated diagnostic pipeline. Results must be interpreted considering the
 > capture design, sequencing depth, tumor purity, ploidy, sample quality, and
 > compatibility of all resources with GRCh38.
@@ -43,7 +43,13 @@ flowchart TD
     M --> O[Final TSV]
     N --> O
     G -.-> P[Optional CNVkit]
-    E -.-> Q[Optional normal-sample gVCF]
+    P --> U[Discrete CNV calls]
+    U --> V[CNV TSV]
+    U -.-> W[Optional GTF overlap]
+    E -.-> Q[Optional germline calling]
+    Q --> R[Genotype and normalize]
+    R --> S[Hard filtering]
+    S --> T[Optional VEP and TSV]
 ```
 
 ### Main analysis
@@ -72,13 +78,16 @@ flowchart TD
 
 | Flag | Process | Result |
 |---|---|---|
-| `--run_cnv true` | CNVkit | Somatic copy-number analysis for each matched pair |
-| `--run_germline true` | HaplotypeCaller | One germline gVCF per normal sample |
-| `--run_vep true` | Ensembl VEP | Functional annotation of filtered somatic variants |
+| `--run_cnv true` | CNVkit, CNVkit call and TSV conversion | Somatic copy-number segments and discrete copy-number calls for each matched pair |
+| `--cnv_gene_annotation <GTF>` | BEDTools gene overlap | Optional exact GENCODE/Ensembl gene overlaps for called CNVs |
+| `--run_germline true` | Complete single-sample germline branch | Genotyped, normalized, filtered VCF and TSV for each normal sample |
+| `--run_vep true` | Ensembl VEP | Functional annotation of filtered somatic and enabled germline variants |
 
-The germline branch stops after HaplotypeCaller. The resulting gVCFs have not
-been jointly genotyped or subjected to germline variant filtering. VEP is
-currently applied only to the somatic Mutect2 results.
+The germline branch runs HaplotypeCaller, GenotypeGVCFs, bcftools normalization,
+type-specific GATK hard filtering, optional VEP annotation, and TSV conversion.
+Each normal sample is processed independently. `GenomicsDBImport` is not needed
+for this single-sample design; use joint genotyping instead if the scientific
+question requires a cohort-level callset.
 
 ## Requirements
 
@@ -168,6 +177,7 @@ not mix GRCh37/hg19 with GRCh38, or `1`-style contigs with `chr1`-style contigs.
 | `--panel_of_normals_index` | Matching `.tbi` index |
 | `--contamination_sites` | Common-SNP VCF for GetPileupSummaries |
 | `--contamination_sites_index` | Matching `.tbi` index |
+| `--cnv_gene_annotation` | Optional GRCh38 GENCODE/Ensembl `.gtf` or `.gtf.gz` for CNV-gene overlaps |
 
 The target BED must correspond to the actual exome capture kit. A generic
 exome BED should not be substituted when interpreting coverage, variants, or
@@ -220,7 +230,7 @@ nextflow run main.nf \
     -with-dag workflow_dag.html
 ```
 
-### Enable somatic VEP annotation
+### Enable somatic and germline VEP annotation
 
 ```bash
 nextflow run main.nf \
@@ -238,7 +248,22 @@ nextflow run main.nf \
     --run_cnv true
 ```
 
-### Generate normal-sample germline gVCFs
+This produces continuous CNVkit segments, discrete threshold-based copy-number
+calls, and a lightweight TSV with a readable `state` column. To add exact gene
+overlaps from a GRCh38 GENCODE or Ensembl annotation:
+
+```bash
+nextflow run main.nf \
+    -profile conda \
+    -resume \
+    --run_cnv true \
+    --cnv_gene_annotation /path/to/gencode.annotation.gtf.gz
+```
+
+The GTF is optional. Without it, the final CNV TSV still contains the gene
+labels generated internally by CNVkit.
+
+### Run the complete germline branch
 
 ```bash
 nextflow run main.nf \
@@ -246,6 +271,8 @@ nextflow run main.nf \
     -resume \
     --run_germline true
 ```
+
+Add `--run_vep true` to annotate both the somatic and germline filtered VCFs.
 
 ### Enable all optional branches
 
@@ -319,8 +346,19 @@ Important outputs include:
 | `results/mutect2/<pair_id>/*.filtered.vcf.gz` | FilterMutectCalls output |
 | `results/annotation/<pair_id>/*.annotated.vcf.gz` | Optional VEP-annotated somatic VCF |
 | `results/mutect2/<pair_id>/*.final.tsv` | Final somatic variant table |
-| `results/cnvkit/<pair_id>/` | Optional CNVkit output |
-| `results/germline/<pair_id>/*.g.vcf.gz` | Optional normal-sample gVCF |
+| `results/cnvkit/<pair_id>/*.cnv.cnr` | CNVkit target/bin-level log2 ratios |
+| `results/cnvkit/<pair_id>/*.cnv.segments.cns` | Continuous segmented copy-number profile |
+| `results/cnvkit/<pair_id>/*.cnv.call.cns` | Discrete threshold-based copy-number calls |
+| `results/cnvkit/<pair_id>/*.cnv.final.tsv` | Lightweight CNV table with a readable copy-number state |
+| `results/cnvkit/<pair_id>/*.cnv.genes.tsv` | Optional one-row-per-CNV/gene GTF overlap table |
+| `results/cnvkit/<pair_id>/*-scatter.png` | CNVkit log2-ratio scatter plot |
+| `results/cnvkit/<pair_id>/*-diagram.pdf` | Chromosome-level CNV diagram |
+| `results/germline/<pair_id>/*.g.vcf.gz` | HaplotypeCaller gVCF intermediate |
+| `results/germline/<pair_id>/*.germline.raw.vcf.gz` | GenotypeGVCFs output |
+| `results/germline/<pair_id>/*.germline.normalized.vcf.gz` | Left-aligned, split multiallelic germline VCF |
+| `results/germline/<pair_id>/*.germline.filtered.vcf.gz` | Hard-filtered germline VCF; failed records remain labelled in `FILTER` |
+| `results/germline/<pair_id>/*.germline.annotated.vcf.gz` | Optional VEP-annotated germline VCF |
+| `results/germline/<pair_id>/*.germline.final.tsv` | Final germline variant table |
 | `results/multiqc/multiqc_report.html` | Cohort-wide QC report |
 | `results/pipeline_info/` | Nextflow report, timeline, and execution trace |
 
@@ -429,9 +467,17 @@ bash .command.run
 - Somatic calling is restricted to the supplied target BED.
 - WES-based CNV detection has limited resolution and is sensitive to coverage,
   tumor purity, ploidy, and capture design.
-- The germline branch generates per-normal gVCFs only; it does not perform joint
-  genotyping, germline filtering, or clinical interpretation.
-- VEP annotation is currently implemented only for somatic Mutect2 variants.
+- Threshold-based CNV states assume the copy numbers produced by CNVkit and are
+  not a substitute for a validated tumor purity/ploidy model. Sex chromosomes
+  require particular care.
+- The optional GTF overlap reports affected genes but does not classify CNVs as
+  clinically pathogenic.
+- The germline branch performs independent single-sample genotyping; it does not
+  perform joint cohort or family genotyping.
+- The generic hard-filter thresholds must be evaluated and adjusted for the
+  dataset before production use.
+- Germline annotation and filtering do not constitute ACMG/AMP clinical
+  classification or genetic counselling.
 - Biological interpretation requires additional QC, review, and predefined
   reporting criteria.
 

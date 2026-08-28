@@ -1,0 +1,4 @@
+name: wes-cnv-annotation
+channels: [conda-forge, bioconda]
+dependencies:
+  - bedtools=2.31.1

@@ -1,11 +1,6 @@
 name: wes-vep
-
-channels:
-  - conda-forge
-  - bioconda
-
+channels: [conda-forge, bioconda]
 dependencies:
   - ensembl-vep=112.0
   - htslib=1.20
   - perl-list-moreutils
-  - perl-list-moreutils-xs
