@@ -32,6 +32,10 @@ gatk --java-options '-Xmx6g' VariantFiltration \
     --filter-expression 'MQRankSum < -12.5' \
     --filter-name SNP_ReadPosRankSum_low \
     --filter-expression 'ReadPosRankSum < -8.0' \
+    --genotype-filter-name GT_DP10 \
+    --genotype-filter-expression 'DP < 10' \
+    --genotype-filter-name GT_GQ20 \
+    --genotype-filter-expression 'GQ < 20' \
     -O germline.snps.filtered.vcf.gz
 
 gatk --java-options '-Xmx6g' SelectVariants \
@@ -52,6 +56,10 @@ gatk --java-options '-Xmx6g' VariantFiltration \
     --filter-expression 'FS > 200.0' \
     --filter-name INDEL_ReadPosRankSum_low \
     --filter-expression 'ReadPosRankSum < -20.0' \
+    --genotype-filter-name GT_DP10 \
+    --genotype-filter-expression 'DP < 10' \
+    --genotype-filter-name GT_GQ20 \
+    --genotype-filter-expression 'GQ < 20' \
     -O germline.indels.filtered.vcf.gz
 
 gatk --java-options '-Xmx6g' MergeVcfs \
