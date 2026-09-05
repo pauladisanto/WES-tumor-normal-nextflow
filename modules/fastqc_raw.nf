@@ -8,5 +8,5 @@ process FASTQC_RAW {
     output:
     tuple val(pair_id), val(sample_id), path('*_fastqc.html'), path('*_fastqc.zip'), emit: reports
     script:
-    "wes_fastqc.sh ${task.cpus} ${reads}"
+    "wes_fastqc.sh ${task.cpus} raw ${reads}"
 }

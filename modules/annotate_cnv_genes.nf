@@ -1,7 +1,7 @@
 process ANNOTATE_CNV_GENES {
     label 'cnv_annotation'
     tag "${pair_id}: ${tumor_id}_vs_${normal_id}"
-    cpus 1; memory '4 GB'; time '2h'
+    cpus 1; memory '2 GB'; time '1h'
     publishDir { "${params.outdir}/cnvkit/${pair_id}" }, mode: 'copy'
 
     input:

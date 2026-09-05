@@ -26,112 +26,30 @@ human-readable TSV table.
 
 ```mermaid
 flowchart TD
-    INPUT["samplesheet.csv: tumor and normal FASTQ"]
-    REF["GRCh38, known sites and WES targets"]
-
-    subgraph PRE["Per-sample preprocessing and QC"]
-        RAWQC["FASTQC_RAW"]
-        TRIM["FASTP"]
-        TRIMQC["FASTQC_TRIMMED"]
-        INDEX["Reuse or build BWA index"]
-        ALIGN["ALIGN_BWA"]
-        PREQC["SAMTOOLS_QC_PREDUP"]
-        MARK["MARK_DUPLICATES"]
-        POSTQC["SAMTOOLS_QC_POSTDUP"]
-        RECAL["BASE_RECALIBRATOR"]
-        BQSR["APPLY_BQSR"]
-        COVERAGE["MOSDEPTH"]
-        PILEUPS["GET_PILEUP_SUMMARIES"]
-    end
-
-    INPUT --> RAWQC
-    INPUT --> TRIM
-    TRIM --> TRIMQC
-    TRIM --> ALIGN
-    REF --> INDEX
-    INDEX --> ALIGN
-    ALIGN --> PREQC
-    ALIGN --> MARK
-    MARK --> POSTQC
-    MARK --> RECAL
-    REF --> RECAL
-    RECAL --> BQSR
-    BQSR --> COVERAGE
-    BQSR --> PILEUPS
-
-    subgraph SOMATIC["Somatic SNVs and small indels"]
-        PAIRS["Match tumor-normal BAMs"]
-        MUTECT["MUTECT2"]
-        ORIENTATION["LEARN_READ_ORIENTATION_MODEL"]
-        CONTAM["CALCULATE_CONTAMINATION"]
-        FILTERM["FILTER_MUTECT_CALLS"]
-        RUNVEP{Run VEP?}
-        VEP_S["VEP somatic annotation"]
-        SOMATICVCF["Filtered somatic VCF"]
-        SOMATICTSV["Somatic final TSV"]
-    end
-
-    BQSR --> PAIRS
-    PAIRS --> MUTECT
-    MUTECT --> ORIENTATION
-    PILEUPS --> CONTAM
-    MUTECT --> FILTERM
-    ORIENTATION --> FILTERM
-    CONTAM --> FILTERM
-    FILTERM --> RUNVEP
-    RUNVEP -->|Yes| VEP_S
-    RUNVEP -->|No| SOMATICVCF
-    VEP_S --> SOMATICTSV
-    SOMATICVCF --> SOMATICTSV
-
-    subgraph CNV["Optional somatic copy-number branch"]
-        CNVKIT["CNVKIT: ratios and segments"]
-        CALL["CNVKIT_CALL: discrete copy numbers"]
-        CNVTSV["CNV final TSV"]
-        GTF["Optional GRCh38 GTF"]
-        GENES["ANNOTATE_CNV_GENES: CNV-gene TSV"]
-    end
-
-    PAIRS -.-> CNVKIT
-    CNVKIT --> CALL
-    CALL --> CNVTSV
-    CALL -.-> GENES
-    GTF --> GENES
-
-    subgraph GERMLINE["Optional single-sample germline branch"]
-        NORMAL["Matched-normal BQSR BAM"]
-        HC["HAPLOTYPE_CALLER: gVCF"]
-        GENOTYPE["GENOTYPE_GVCFS"]
-        NORM["NORMALIZE_GERMLINE_VARIANTS"]
-        FILTERG["FILTER_GERMLINE_VARIANTS"]
-        RUNGVEP{Run VEP?}
-        VEP_G["VEP_GERMLINE"]
-        GERMLINEVCF["Filtered germline VCF"]
-        GERMLINETSV["Germline final TSV"]
-    end
-
-    BQSR -.-> NORMAL
-    NORMAL --> HC
-    HC --> GENOTYPE
-    GENOTYPE --> NORM
-    NORM --> FILTERG
-    FILTERG --> RUNGVEP
-    RUNGVEP -->|Yes| VEP_G
-    RUNGVEP -->|No| GERMLINEVCF
-    VEP_G --> GERMLINETSV
-    GERMLINEVCF --> GERMLINETSV
-
-    subgraph REPORTS["Combined quality report"]
-        MULTIQC["MULTIQC"]
-    end
-
-    RAWQC --> MULTIQC
-    TRIM --> MULTIQC
-    TRIMQC --> MULTIQC
-    PREQC --> MULTIQC
-    MARK --> MULTIQC
-    POSTQC --> MULTIQC
-    COVERAGE --> MULTIQC
+    A[Paired-end FASTQ] --> B[FastQC and fastp]
+    B --> C[BWA-MEM alignment]
+    C --> D[Duplicate marking]
+    D --> E[BQSR]
+    E --> F[Coverage and contamination pileups]
+    E --> G[Match tumor and normal BAMs]
+    G --> H[Mutect2]
+    H --> I[Orientation model]
+    F --> J[Contamination estimate]
+    I --> K[FilterMutectCalls]
+    J --> K
+    K --> L{Run VEP?}
+    L -->|Yes| M[VEP-annotated VCF]
+    L -->|No| N[Filtered VCF]
+    M --> O[Final TSV]
+    N --> O
+    G -.-> P[Optional CNVkit]
+    P --> U[Discrete CNV calls]
+    U --> V[CNV TSV]
+    U -.-> W[Optional GTF overlap]
+    E -.-> Q[Optional germline calling]
+    Q --> R[Genotype and normalize]
+    R --> S[Hard filtering]
+    S --> T[Optional VEP and TSV]
 ```
 
 ### Main analysis
@@ -433,6 +351,8 @@ Important outputs include:
 | `results/cnvkit/<pair_id>/*.cnv.call.cns` | Discrete threshold-based copy-number calls |
 | `results/cnvkit/<pair_id>/*.cnv.final.tsv` | Lightweight CNV table with a readable copy-number state |
 | `results/cnvkit/<pair_id>/*.cnv.genes.tsv` | Optional one-row-per-CNV/gene GTF overlap table |
+| `results/cnvkit/<pair_id>/*-scatter.png` | CNVkit log2-ratio scatter plot |
+| `results/cnvkit/<pair_id>/*-diagram.pdf` | Chromosome-level CNV diagram |
 | `results/germline/<pair_id>/*.g.vcf.gz` | HaplotypeCaller gVCF intermediate |
 | `results/germline/<pair_id>/*.germline.raw.vcf.gz` | GenotypeGVCFs output |
 | `results/germline/<pair_id>/*.germline.normalized.vcf.gz` | Left-aligned, split multiallelic germline VCF |

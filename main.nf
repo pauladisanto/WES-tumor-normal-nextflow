@@ -27,7 +27,7 @@ include { GENOTYPE_GVCFS } from './modules/genotype_gvcfs'
 include { NORMALIZE_GERMLINE_VARIANTS } from './modules/normalize_germline_variants'
 include { FILTER_GERMLINE_VARIANTS } from './modules/filter_germline_variants'
 include { VEP_GERMLINE } from './modules/vep_germline'
-include { GERMLINE_VCF_TO_TSV } from './modules/germline_vcf_to_tsv'
+include { GERMLINE_VCF_TO_TSV } from './modules/germline_vcf_to_tsv' 
 include { MULTIQC } from './modules/multiqc'
 
 
@@ -77,7 +77,8 @@ workflow {
     FASTQC_TRIMMED(trimmed_qc_ch)
 
     gatk_ref_ch = Channel.value(tuple(file(params.reference, checkIfExists: true), file(params.reference_fai, checkIfExists: true), file(params.reference_dict, checkIfExists: true)))
-    targets_ch = Channel.value(file(params.targets, checkIfExists: true))
+    calling_targets_ch = Channel.value(file(params.calling_targets, checkIfExists: true))
+    coverage_targets_ch = Channel.value(file(params.coverage_targets, checkIfExists: true))
     bqsr_sites_ch = Channel.value(tuple(file(params.dbsnp, checkIfExists: true), file(params.dbsnp_index, checkIfExists: true), file(params.known_indels, checkIfExists: true), file(params.known_indels_index, checkIfExists: true), file(params.mills_indels, checkIfExists: true), file(params.mills_indels_index, checkIfExists: true)))
     somatic_resources_ch = Channel.value(tuple(file(params.germline_resource, checkIfExists: true), file(params.germline_resource_index, checkIfExists: true), file(params.panel_of_normals, checkIfExists: true), file(params.panel_of_normals_index, checkIfExists: true)))
     contamination_sites_ch = Channel.value(tuple(file(params.contamination_sites, checkIfExists: true), file(params.contamination_sites_index, checkIfExists: true)))
@@ -108,8 +109,8 @@ workflow {
     SAMTOOLS_QC_POSTDUP(MARK_DUPLICATES.out.bam)
     BASE_RECALIBRATOR(MARK_DUPLICATES.out.bam, gatk_ref_ch, bqsr_sites_ch)
     APPLY_BQSR(BASE_RECALIBRATOR.out.recalibration, gatk_ref_ch)
-    MOSDEPTH(APPLY_BQSR.out.bam, targets_ch)
-    GET_PILEUP_SUMMARIES(APPLY_BQSR.out.bam, gatk_ref_ch, contamination_sites_ch, targets_ch)
+    MOSDEPTH(APPLY_BQSR.out.bam, coverage_targets_ch)
+    GET_PILEUP_SUMMARIES(APPLY_BQSR.out.bam, gatk_ref_ch, contamination_sites_ch, calling_targets_ch)
 
     tumor_bam_ch = APPLY_BQSR.out.bam.filter { pair_id, sample_id, role, bam, bai -> role == 'tumor' }.map { pair_id, sample_id, role, bam, bai -> tuple(pair_id, sample_id, bam, bai) }
     normal_bam_ch = APPLY_BQSR.out.bam.filter { pair_id, sample_id, role, bam, bai -> role == 'normal' }.map { pair_id, sample_id, role, bam, bai -> tuple(pair_id, sample_id, bam, bai) }
@@ -119,7 +120,7 @@ workflow {
     normal_pileups_ch = GET_PILEUP_SUMMARIES.out.pileups.filter { pair_id, sample_id, role, table -> role == 'normal' }.map { pair_id, sample_id, role, table -> tuple(pair_id, sample_id, table) }
     matched_pileups_ch = tumor_pileups_ch.join(normal_pileups_ch, by: 0)
 
-    MUTECT2(matched_bams_ch, gatk_ref_ch, somatic_resources_ch, targets_ch)
+    MUTECT2(matched_bams_ch, gatk_ref_ch, somatic_resources_ch, calling_targets_ch)
     LEARN_READ_ORIENTATION_MODEL(MUTECT2.out.f1r2)
     CALCULATE_CONTAMINATION(matched_pileups_ch)
 
@@ -137,7 +138,7 @@ workflow {
     VCF_TO_TSV(final_variants_ch)
 
     if (params.run_cnv) {
-        CNVKIT(matched_bams_ch, gatk_ref_ch, targets_ch)
+        CNVKIT(matched_bams_ch, gatk_ref_ch, calling_targets_ch)
         CNVKIT_CALL(CNVKIT.out.segments)
         CNV_TO_TSV(CNVKIT_CALL.out.calls)
 
@@ -150,8 +151,8 @@ workflow {
     }
     if (params.run_germline) {
         normal_for_germline_ch = normal_bam_ch.map { pair_id, normal_id, bam, bai -> tuple(pair_id, normal_id, bam, bai) }
-        HAPLOTYPE_CALLER(normal_for_germline_ch, gatk_ref_ch, targets_ch)
-        GENOTYPE_GVCFS(HAPLOTYPE_CALLER.out.gvcf, gatk_ref_ch, targets_ch)
+        HAPLOTYPE_CALLER(normal_for_germline_ch, gatk_ref_ch, calling_targets_ch)
+        GENOTYPE_GVCFS(HAPLOTYPE_CALLER.out.gvcf, gatk_ref_ch, calling_targets_ch)
         NORMALIZE_GERMLINE_VARIANTS(GENOTYPE_GVCFS.out.variants, Channel.value(reference_file))
         FILTER_GERMLINE_VARIANTS(NORMALIZE_GERMLINE_VARIANTS.out.normalized, gatk_ref_ch)
 

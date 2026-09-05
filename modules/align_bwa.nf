@@ -1,7 +1,7 @@
 process ALIGN_BWA {
     label 'alignment'
     tag "${pair_id}: ${sample_id}"
-    cpus 8; memory '10 GB'; time '8h'; maxForks 2
+    cpus 8; memory '12 GB'; time '8h'; maxForks 2
     publishDir "${params.outdir}/aligned", mode: 'copy', pattern: '*.bam*'
     input:
     tuple val(pair_id), val(sample_id), val(role), path(r1), path(r2)
